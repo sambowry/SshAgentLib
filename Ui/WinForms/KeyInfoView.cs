@@ -136,8 +136,9 @@ namespace dlech.SshAgentLib.WinForms
         buttonTableLayoutPanel.Controls.Add(lockButton, 0, 0);
         buttonTableLayoutPanel.Controls.Add(unlockButton, 1, 0);
         buttonTableLayoutPanel.Controls.Add(addKeyButton, 2, 0);
-        buttonTableLayoutPanel.Controls.Add(removeKeyButton, 3, 0);
-        buttonTableLayoutPanel.Controls.Add(removeAllButton, 4, 0);
+        buttonTableLayoutPanel.Controls.Add(authKeysButton, 3, 0);
+        buttonTableLayoutPanel.Controls.Add(removeKeyButton, 4, 0);
+        buttonTableLayoutPanel.Controls.Add(removeAllButton, 5, 0);
       }
       else
       {
@@ -149,7 +150,8 @@ namespace dlech.SshAgentLib.WinForms
           buttonTableLayoutPanel.Controls.Add(unlockButton, 1, 0);
         }
         var colCount = buttonTableLayoutPanel.ColumnCount;
-        buttonTableLayoutPanel.Controls.Add(addKeyButton, colCount - 4, 0);
+        buttonTableLayoutPanel.Controls.Add(addKeyButton, colCount - 5, 0);
+        buttonTableLayoutPanel.Controls.Add(authKeysButton, colCount - 4, 0);
         buttonTableLayoutPanel.Controls.Add(removeKeyButton, colCount - 3, 0);
         buttonTableLayoutPanel.Controls.Add(removeAllButton, colCount - 2, 0);
         buttonTableLayoutPanel.Controls.Add(refreshButton, colCount - 1, 0);
@@ -656,6 +658,47 @@ namespace dlech.SshAgentLib.WinForms
     private void refreshButton_Click(object sender, EventArgs e)
     {
       ReloadKeyListView();
+    }
+
+    private class AuthKeysBox : Form
+    {
+      public AuthKeysBox(string str)
+      {
+        Text = "authorized_keys";
+        TextBox t = new TextBox();
+        t.Text = str;
+        t.Dock = DockStyle.Fill;
+        t.Multiline = true;
+        t.ScrollBars = ScrollBars.Both;
+        t.WordWrap = false;
+        // t.SelectionStart = 0;
+        Controls.Add(t);
+      }
+    }
+
+    private void authkeysButton_Click(object sender, EventArgs e)
+    {
+      string text = "";
+      if (dataGridView.SelectedRows.Count > 0)
+      {
+        foreach (DataGridViewRow row in dataGridView.SelectedRows)
+        {
+          var keyWrapper = row.DataBoundItem as KeyWrapper;
+          var key = keyWrapper.GetKey();
+          text += key.GetAuthorizedKeyString() + "\r\n";
+        }
+      }
+      else
+      {
+        foreach (DataGridViewRow row in dataGridView.Rows)
+        {
+          var keyWrapper = row.DataBoundItem as KeyWrapper;
+          var key = keyWrapper.GetKey();
+          text += key.GetAuthorizedKeyString() + "\r\n";
+        }
+      }
+      Form d = new AuthKeysBox(text);
+      d.ShowDialog();
     }
 
     private void win7OpenFileDialog_FileOk(object sender, CancelEventArgs e)
