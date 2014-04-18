@@ -32,9 +32,13 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Timers;
+using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Encodings;
 using Org.BouncyCastle.Crypto.Engines;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Math;
 
 namespace dlech.SshAgentLib
 {
@@ -266,6 +270,8 @@ namespace dlech.SshAgentLib
     public Agent()
     {
       mKeyList = new List<ISshKey>();
+      // (new System.Threading.Thread(new System.Threading.ThreadStart(LoadCertificates))).Start();
+      LoadCertificates();
     }
 
     #endregion
@@ -524,23 +530,60 @@ namespace dlech.SshAgentLib
             }
 
             /* create signature */
-            var signKey = matchingKey;
-            var signer = signKey.GetSigner();
-            var algName = signKey.Algorithm.GetIdentifierString();
-            signer.Init(true, signKey.GetPrivateKeyParameters());
-            signer.BlockUpdate(reqData, 0, reqData.Length);
-            byte[] signature = signer.GenerateSignature();
-            signature = signKey.FormatSignature(signature);
-            BlobBuilder signatureBuilder = new BlobBuilder();
-            if (!flags.HasFlag(SignRequestFlags.SSH_AGENT_OLD_SIGNATURE)) {
-              signatureBuilder.AddStringBlob(algName);
+            if (!matchingKey.IsPublicOnly)
+            {
+              var signKey = matchingKey;
+              var signer = signKey.GetSigner();
+              var algName = signKey.Algorithm.GetIdentifierString();
+              signer.Init(true, signKey.GetPrivateKeyParameters());
+              signer.BlockUpdate(reqData, 0, reqData.Length);
+              byte[] signature = signer.GenerateSignature();
+              signature = signKey.FormatSignature(signature);
+              BlobBuilder signatureBuilder = new BlobBuilder();
+              if (!flags.HasFlag(SignRequestFlags.SSH_AGENT_OLD_SIGNATURE))
+              {
+                signatureBuilder.AddStringBlob(algName);
+              }
+              signatureBuilder.AddBlob(signature);
+              responseBuilder.AddBlob(signatureBuilder.GetBlob());
+              responseBuilder.InsertHeader(Message.SSH2_AGENT_SIGN_RESPONSE);
+              try
+              {
+                KeyUsed(this, new KeyUsedEventArgs(signKey));
+              }
+              catch { }
             }
-            signatureBuilder.AddBlob(signature);
-            responseBuilder.AddBlob(signatureBuilder.GetBlob());
-            responseBuilder.InsertHeader(Message.SSH2_AGENT_SIGN_RESPONSE);
-            try {
-              KeyUsed(this, new KeyUsedEventArgs(signKey));
-            } catch { }
+            else if (matchingKey.IsCertificate)
+            {
+              var signKey = matchingKey;
+
+              SHA1Managed hash = new SHA1Managed();
+              byte[] hashedData = hash.ComputeHash(reqData);
+              RSACryptoServiceProvider csp = matchingKey.GetPrivateKeyCSP();
+              byte[] signature = csp.SignHash(hashedData, CryptoConfig.MapNameToOID("SHA1"));
+
+              signature = signKey.FormatSignature(signature);
+              BlobBuilder signatureBuilder = new BlobBuilder();
+              if (!flags.HasFlag(SignRequestFlags.SSH_AGENT_OLD_SIGNATURE))
+              {
+                var algName = signKey.Algorithm.GetIdentifierString();
+                signatureBuilder.AddStringBlob(algName);
+              }
+              signatureBuilder.AddBlob(signature);
+              responseBuilder.AddBlob(signatureBuilder.GetBlob());
+              responseBuilder.InsertHeader(Message.SSH2_AGENT_SIGN_RESPONSE);
+              try
+              {
+                KeyUsed(this, new KeyUsedEventArgs(signKey));
+              }
+              catch { }
+            }
+            else {
+              // PuTTY stop authentication after receiving an SSH_AGENT_FAILURE message when the private key is missing
+              // better to send an empty response
+              responseBuilder.AddBlob(new byte[0]);
+              responseBuilder.InsertHeader(Message.SSH2_AGENT_SIGN_RESPONSE);
+            }
             break; // succeeded
           } catch (InvalidOperationException) {
             // this is expected if there is not a matching key
@@ -777,6 +820,60 @@ namespace dlech.SshAgentLib
       if (Locked != null) {
         LockEventArgs args = new LockEventArgs(IsLocked);
         Locked(this, args);
+      }
+    }
+
+    private void LoadCertificates()
+    {
+      // System.Windows.Forms.MessageBox.Show("Agent loading certificates.");
+      X509Store myStore = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+      myStore.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadOnly);
+      foreach (X509Certificate2 cert in myStore.Certificates.Find(X509FindType.FindByKeyUsage, X509KeyUsageFlags.DigitalSignature, false))
+      {
+        bool eku_found = false;
+        foreach (X509Extension ext in cert.Extensions)
+        {
+          if (ext.Oid.Value == "2.5.29.37" ) // Enhanced Key Usage
+          {
+            X509EnhancedKeyUsageExtension eku_ext = (X509EnhancedKeyUsageExtension)ext;
+            foreach (Oid oid in eku_ext.EnhancedKeyUsages)
+            {
+              if (oid.Value == "1.3.6.1.4.1.311.20.2.2" ) // Smart Card Logon
+              {
+                eku_found = true;
+              }
+              else if (oid.Value == "1.3.6.1.5.5.7.3.2") // Client Authentication
+              {
+                eku_found = true;
+              }
+              else if (oid.Value == "1.3.6.1.5.5.7.3.21") // Secure Shell Client 
+              {
+                eku_found = true;
+              }
+            }
+          }
+        }
+        if (!eku_found) continue;
+        if (cert.PublicKey.Key is RSACryptoServiceProvider)
+        {
+          RSACryptoServiceProvider pubkey = cert.PublicKey.Key as RSACryptoServiceProvider;
+          RSAParameters par = pubkey.ExportParameters(false);
+          BigInteger modulus = new BigInteger(1, par.Modulus);
+          BigInteger exponent = new BigInteger(1, par.Exponent);
+          RsaKeyParameters aPublicKeyParameter = new RsaKeyParameters(false, modulus, exponent);
+          string aComment = "X509:" + (cert.FriendlyName.Length > 0 ? cert.FriendlyName : cert.Thumbprint);
+          SshKey key;
+          if (cert.HasPrivateKey)
+          {
+//            CspKeyContainerInfo keyInfo = (cert.PrivateKey as RSACryptoServiceProvider).CspKeyContainerInfo;
+            key = new SshKey(SshVersion.SSH2, aPublicKeyParameter, cert.PrivateKey as RSACryptoServiceProvider, aComment);
+          }
+          else
+          {
+            key = new SshKey(SshVersion.SSH2, aPublicKeyParameter, (AsymmetricKeyParameter)null, aComment);
+          }
+          AddKey(key);
+        }
       }
     }
 

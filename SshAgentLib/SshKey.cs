@@ -27,6 +27,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Security.Cryptography;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Parameters;
 
@@ -41,6 +42,7 @@ namespace dlech.SshAgentLib
     private List<Agent.KeyConstraint> mKeyConstraints;
     private AsymmetricKeyParameter mPublicKeyParameter;
     private AsymmetricKeyParameter mPrivateKeyParameter;
+    private RSACryptoServiceProvider mPrivateKeyCSP;
 
     public SshKey(SshVersion aVersion, AsymmetricKeyParameter aPublicKeyParameter,
       AsymmetricKeyParameter aPrivateKeyParameter = null, string aComment = "")
@@ -49,11 +51,21 @@ namespace dlech.SshAgentLib
         throw new ArgumentNullException("aPublicKeyParameter");
       }
       IsPublicOnly = (aPrivateKeyParameter == null);
+      IsCertificate = false;
       Version = aVersion;
       mPublicKeyParameter = aPublicKeyParameter;
       mPrivateKeyParameter = aPrivateKeyParameter;
+      mPrivateKeyCSP = null;
       Comment = aComment;
       mKeyConstraints = new List<Agent.KeyConstraint>();
+    }
+
+    public SshKey(SshVersion aVersion, AsymmetricKeyParameter aPublicKeyParameter,
+      RSACryptoServiceProvider aPrivateKeyCSP, string aComment = "")
+      : this(aVersion, aPublicKeyParameter, (AsymmetricKeyParameter)null, aComment)
+    {
+      IsCertificate = true;
+      mPrivateKeyCSP = aPrivateKeyCSP;
     }
 
     public SshKey(SshVersion aVersion, AsymmetricCipherKeyPair aCipherKeyPair,
@@ -88,6 +100,7 @@ namespace dlech.SshAgentLib
     }
 
     public bool IsPublicOnly { get; private set; }
+    public bool IsCertificate { get; private set; }
 
     public int Size
     {
@@ -136,6 +149,11 @@ namespace dlech.SshAgentLib
     public AsymmetricKeyParameter GetPrivateKeyParameters()
     {
       return mPrivateKeyParameter;
+    }
+
+    public RSACryptoServiceProvider GetPrivateKeyCSP()
+    {
+      return mPrivateKeyCSP;
     }
 
     public void AddConstraint(Agent.KeyConstraint aConstraint)

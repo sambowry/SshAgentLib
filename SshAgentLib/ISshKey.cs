@@ -56,6 +56,11 @@ namespace dlech.SshAgentLib
     bool IsPublicOnly { get; }
 
     /// <summary>
+    /// returns true if private key stored in a certificate
+    /// </summary>
+    bool IsCertificate { get; }
+
+    /// <summary>
     /// The bit size of the key
     /// </summary>
     int Size { get; }
@@ -81,6 +86,12 @@ namespace dlech.SshAgentLib
     /// </summary>
     /// <returns></returns>
     AsymmetricKeyParameter GetPrivateKeyParameters();
+
+    /// <summary>
+    /// Gets the Cryptographic Service Provider of the private key
+    /// </summary>
+    /// <returns></returns>
+    RSACryptoServiceProvider GetPrivateKeyCSP();
 
     /// <summary>
     /// Add constraint to key

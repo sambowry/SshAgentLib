@@ -28,6 +28,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Encodings;
 using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -183,7 +184,7 @@ namespace dlech.SshAgentLib
             var publicKeyParams = replyParser.ReadSsh1PublicKeyData(true);
             var comment = replyParser.ReadString();
             keyCollection.Add(
-              new SshKey(SshVersion.SSH1, publicKeyParams, null, comment));
+              new SshKey(SshVersion.SSH1, publicKeyParams, (AsymmetricKeyParameter)null, comment));
           }
           break;
         case SshVersion.SSH2:
@@ -197,7 +198,7 @@ namespace dlech.SshAgentLib
             var publicKeyParams = publicKeyParser.ReadSsh2PublicKeyData();
             var comment = replyParser.ReadString();
             keyCollection.Add(
-              new SshKey(SshVersion.SSH2, publicKeyParams, null, comment));
+              new SshKey(SshVersion.SSH2, publicKeyParams, (AsymmetricKeyParameter)null, comment));
           }
           break;
         default:
