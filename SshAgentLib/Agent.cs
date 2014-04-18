@@ -314,7 +314,8 @@ namespace dlech.SshAgentLib
       ISshKey matchingKey = mKeyList.Get(aKey.Version, aKey.GetPublicKeyBlob());
       RemoveKey(matchingKey);
 
-      mKeyList.Add(aKey);
+//      mKeyList.Add(aKey);
+      mKeyList.Insert(0,aKey);
       FireKeyListChanged(KeyListChangeEventAction.Add, aKey);
     }
 
@@ -561,7 +562,6 @@ namespace dlech.SshAgentLib
               byte[] hashedData = hash.ComputeHash(reqData);
               RSACryptoServiceProvider csp = matchingKey.GetPrivateKeyCSP();
               byte[] signature = csp.SignHash(hashedData, CryptoConfig.MapNameToOID("SHA1"));
-
               signature = signKey.FormatSignature(signature);
               BlobBuilder signatureBuilder = new BlobBuilder();
               if (!flags.HasFlag(SignRequestFlags.SSH_AGENT_OLD_SIGNATURE))
@@ -825,7 +825,6 @@ namespace dlech.SshAgentLib
 
     private void LoadCertificates()
     {
-      // System.Windows.Forms.MessageBox.Show("Agent loading certificates.");
       X509Store myStore = new X509Store(StoreName.My, StoreLocation.CurrentUser);
       myStore.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadOnly);
       foreach (X509Certificate2 cert in myStore.Certificates.Find(X509FindType.FindByKeyUsage, X509KeyUsageFlags.DigitalSignature, false))
@@ -865,8 +864,10 @@ namespace dlech.SshAgentLib
           SshKey key;
           if (cert.HasPrivateKey)
           {
-//            CspKeyContainerInfo keyInfo = (cert.PrivateKey as RSACryptoServiceProvider).CspKeyContainerInfo;
-            key = new SshKey(SshVersion.SSH2, aPublicKeyParameter, cert.PrivateKey as RSACryptoServiceProvider, aComment);
+            var csp = cert.PrivateKey as RSACryptoServiceProvider;
+            //CspKeyContainerInfo keyInfo = csp.CspKeyContainerInfo;
+            //System.Windows.Forms.MessageBox.Show("keyInfo.Accessible: " + keyInfo.Accessible);
+            key = new SshKey(SshVersion.SSH2, aPublicKeyParameter, csp, aComment);
           }
           else
           {

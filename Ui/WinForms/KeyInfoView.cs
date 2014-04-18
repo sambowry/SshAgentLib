@@ -456,7 +456,8 @@ namespace dlech.SshAgentLib.WinForms
       switch (aArgs.Action)
       {
         case Agent.KeyListChangeEventAction.Add:
-          mKeyCollection.Add(new KeyWrapper(aArgs.Key));
+//          mKeyCollection.Add(new KeyWrapper(aArgs.Key));
+          mKeyCollection.Insert(0,new KeyWrapper(aArgs.Key));
           UpdateVisibility();
           break;
         case Agent.KeyListChangeEventAction.Remove:
