@@ -526,7 +526,10 @@ namespace dlech.SshAgentLib
                 KeyConstraintType.SSH_AGENT_CONSTRAIN_CONFIRM);
             if (confirmConstraints.Count() > 0) {
               if (!ConfirmUserPermissionCallback.Invoke(matchingKey)) {
-                goto default;
+//                goto default;
+                responseBuilder.AddBlob(new byte[0]);
+                responseBuilder.InsertHeader(Message.SSH2_AGENT_SIGN_RESPONSE);
+                break;
               }
             }
 

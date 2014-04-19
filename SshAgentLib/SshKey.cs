@@ -185,6 +185,7 @@ namespace dlech.SshAgentLib
       foreach (Agent.KeyConstraint constraint in mKeyConstraints) {
         newKey.AddConstraint(constraint);
       }
+      newKey.IsCertificate = IsCertificate;
       newKey.mPrivateKeyCSP = mPrivateKeyCSP;
       return newKey;
     }
