@@ -25,6 +25,7 @@
 // THE SOFTWARE.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -830,32 +831,35 @@ namespace dlech.SshAgentLib
     {
       X509Store myStore = new X509Store(StoreName.My, StoreLocation.CurrentUser);
       myStore.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadOnly);
-      foreach (X509Certificate2 cert in myStore.Certificates.Find(X509FindType.FindByKeyUsage, X509KeyUsageFlags.DigitalSignature, false))
+      X509Certificate2Collection certs = myStore.Certificates.Find(X509FindType.FindByKeyUsage, X509KeyUsageFlags.DigitalSignature, false);
+      for(int i=certs.Count-1; i>=0; i--)
       {
         bool eku_found = false;
-        foreach (X509Extension ext in cert.Extensions)
+        if (certs[i].HasPrivateKey )
         {
-          if (ext.Oid.Value == "2.5.29.37" ) // Enhanced Key Usage
+          foreach (X509Extension ext in certs[i].Extensions)
           {
-            X509EnhancedKeyUsageExtension eku_ext = (X509EnhancedKeyUsageExtension)ext;
-            foreach (Oid oid in eku_ext.EnhancedKeyUsages)
+            if (ext.Oid.Value == "2.5.29.37") // Enhanced Key Usage
             {
-              if (oid.Value == "1.3.6.1.4.1.311.20.2.2" ) // Smart Card Logon
+              X509EnhancedKeyUsageExtension eku_ext = (X509EnhancedKeyUsageExtension)ext;
+              foreach (Oid oid in eku_ext.EnhancedKeyUsages)
               {
-                eku_found = true;
-              }
-              else if (oid.Value == "1.3.6.1.5.5.7.3.2") // Client Authentication
-              {
-                eku_found = true;
-              }
-              else if (oid.Value == "1.3.6.1.5.5.7.3.21") // Secure Shell Client 
-              {
-                eku_found = true;
+                if( oid.Value == "1.3.6.1.4.1.311.20.2.2" ||   // Smart Card Logon
+                    oid.Value == "1.3.6.1.5.5.7.3.2"      ||   // Client Authentication
+                    oid.Value == "1.3.6.1.5.5.7.3.21"        ) // Secure Shell Client 
+                {
+                  eku_found = true; break;
+                }
               }
             }
           }
         }
-        if (!eku_found) continue;
+        if (!eku_found) certs.RemoveAt(i);
+      }
+      certs = X509Certificate2UI.SelectFromCollection(certs, "Certificates", "Select one ore more", X509SelectionFlag.MultiSelection);
+      foreach (X509Certificate2 cert in certs)
+      {
+        SshKey key = null;
         if (cert.PublicKey.Key is RSACryptoServiceProvider)
         {
           RSACryptoServiceProvider pubkey = cert.PublicKey.Key as RSACryptoServiceProvider;
@@ -864,20 +868,19 @@ namespace dlech.SshAgentLib
           BigInteger exponent = new BigInteger(1, par.Exponent);
           RsaKeyParameters aPublicKeyParameter = new RsaKeyParameters(false, modulus, exponent);
           string aComment = "X509:" + (cert.FriendlyName.Length > 0 ? cert.FriendlyName : cert.Thumbprint);
-          SshKey key;
-          if (cert.HasPrivateKey)
+          try
           {
-            var csp = cert.PrivateKey as RSACryptoServiceProvider;
-            //CspKeyContainerInfo keyInfo = csp.CspKeyContainerInfo;
-            //System.Windows.Forms.MessageBox.Show("keyInfo.Accessible: " + keyInfo.Accessible);
-            key = new SshKey(SshVersion.SSH2, aPublicKeyParameter, csp, aComment);
+            key = new SshKey(SshVersion.SSH2, aPublicKeyParameter, cert.PrivateKey as RSACryptoServiceProvider, aComment);
           }
-          else
+          catch (CryptographicException e)
           {
-            key = new SshKey(SshVersion.SSH2, aPublicKeyParameter, (AsymmetricKeyParameter)null, aComment);
+            // System.Windows.Forms.MessageBox.Show("cert.PrivateKey CryptographicException:\n" + e.ToString());
+            continue;
           }
+          key = new SshKey(SshVersion.SSH2, aPublicKeyParameter, (AsymmetricKeyParameter)null, aComment);
           AddKey(key);
         }
+        // else if (cert.PublicKey.Key is DSACryptoServiceProvider) { }
       }
     }
 
